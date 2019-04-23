@@ -5,6 +5,7 @@ using UnityEditor.Experimental.Rendering.LWRP.Path2D;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering.LWRP;
 using UnityEngine.Rendering.LWRP;
+using UnityEngine.UIElements;
 
 namespace UnityEditor.Experimental.Rendering.LWRP
 {
@@ -64,7 +65,7 @@ namespace UnityEditor.Experimental.Rendering.LWRP
             public static GUIContent generalVolumeOpacity = EditorGUIUtility.TrTextContent("Volume Opacity", "Specify the light's volumetric light volume opacity");
             public static GUIContent generalLightOperation = EditorGUIUtility.TrTextContent("Light Operation", "Specify the light operation");
 
-            public static GUIContent pointLightQuality = EditorGUIUtility.TrTextContent("Quality", "Use accurate if there are noticable visual issues");
+            public static GUIContent pointLightQuality = EditorGUIUtility.TrTextContent("Quality", "Use accurate if there are noticeable visual issues");
             public static GUIContent pointLightInnerAngle =  EditorGUIUtility.TrTextContent("Inner Angle", "Specify the inner angle of the light");
             public static GUIContent pointLightOuterAngle = EditorGUIUtility.TrTextContent("Outer Angle", "Specify the outer angle of the light");
             public static GUIContent pointLightInnerRadius = EditorGUIUtility.TrTextContent("Inner Radius", "Specify the inner radius of the light");
@@ -79,7 +80,7 @@ namespace UnityEditor.Experimental.Rendering.LWRP
             public static GUIContent shapeLightFalloffOffset = EditorGUIUtility.TrTextContent("Falloff Offset", "Specify the shape's falloff offset");
             public static GUIContent shapeLightAngleOffset = EditorGUIUtility.TrTextContent("Angle Offset", "Adjust the rotation of the object");
             public static GUIContent shapeLightOverlapMode = EditorGUIUtility.TrTextContent("Light Overlap Mode", "Specify what should happen when this light overlaps other lights");
-            public static GUIContent shapeLightOrder = EditorGUIUtility.TrTextContent("Light Order", "Shape light order");
+            public static GUIContent shapeLightOrder = EditorGUIUtility.TrTextContent("Light Order", "The relative order in which lights of the same light operation get rendered.");
 
             public static GUIContent sortingLayerPrefixLabel = EditorGUIUtility.TrTextContent("Target Sorting Layers", "Apply this light to the specified sorting layers.");
             public static GUIContent sortingLayerAll = EditorGUIUtility.TrTextContent("All");
@@ -103,7 +104,7 @@ namespace UnityEditor.Experimental.Rendering.LWRP
         SerializedProperty m_UseNormalMap;
         SerializedProperty m_ApplyToSortingLayers;
         SerializedProperty m_VolumetricAlpha;
-        SerializedProperty m_LightOperation;
+        SerializedProperty m_LightOperationIndex;
         SerializedProperty m_FalloffIntensity;
         SerializedProperty m_PointZDistance;
         SerializedProperty m_LightOrder;
@@ -135,15 +136,53 @@ namespace UnityEditor.Experimental.Rendering.LWRP
 
         Light2D lightObject => target as Light2D;
 
+        static Texture[] m_Icons;
+        int m_LastLightType = 0;
+
+        HeaderModifier m_HeaderModifier;
+        public override VisualElement CreateInspectorGUI()
+        {
+            m_HeaderModifier = new HeaderModifier(OnInspectorGUI, () =>
+            {
+                if (m_Icons != null)
+                {
+                    Color skinColor = EditorGUIUtility.isProSkin ? new Color32(56, 56, 56, 255) : new Color32(194, 194, 194, 255);
+
+                    //GUISkin skin = EditorGUIUtility.GetBuiltinSkin(EditorSkin.Inspector);
+
+                    Rect iconRect = new Rect(16, 2, 16, 16);
+                    EditorGUI.DrawRect(iconRect, skinColor);
+
+                    if (m_Icons[m_LastLightType])
+                    {
+                        GUI.DrawTexture(iconRect, m_Icons[m_LastLightType]);
+                    }
+                }
+            });
+            return m_HeaderModifier;
+        }
+
         void OnEnable()
         {
+            if (m_Icons == null)
+            {
+                m_Icons = new Texture[5];
+                m_Icons[0] = Resources.Load("Lights/Parametric Light") as Texture;
+                m_Icons[1] = Resources.Load("Lights/Freeform Light") as Texture;
+                m_Icons[2] = Resources.Load("Lights/Sprite Light") as Texture;
+                m_Icons[3] = Resources.Load("Lights/Point Light") as Texture;
+                m_Icons[4] = Resources.Load("Lights/Global Light") as Texture;
+            }
+
+
+
             m_LightType = serializedObject.FindProperty("m_LightType");
             m_LightColor = serializedObject.FindProperty("m_Color");
             m_LightIntensity = serializedObject.FindProperty("m_Intensity");
             m_UseNormalMap = serializedObject.FindProperty("m_UseNormalMap");
             m_ApplyToSortingLayers = serializedObject.FindProperty("m_ApplyToSortingLayers");
             m_VolumetricAlpha = serializedObject.FindProperty("m_LightVolumeOpacity");
-            m_LightOperation = serializedObject.FindProperty("m_LightOperationIndex");
+            m_LightOperationIndex = serializedObject.FindProperty("m_LightOperationIndex");
             m_FalloffIntensity = serializedObject.FindProperty("m_FalloffIntensity");
             m_PointZDistance = serializedObject.FindProperty("m_PointLightDistance");
             m_LightOrder = serializedObject.FindProperty("m_LightOrder");
@@ -174,15 +213,17 @@ namespace UnityEditor.Experimental.Rendering.LWRP
             {
                 for (int i = 0; i < rendererData.lightOperations.Length; ++i)
                 {
-                    var lightOperation = rendererData.lightOperations[i];
+                    lightOperationIndices.Add(i);
+
+                    ref var lightOperation = ref rendererData.lightOperations[i];
                     if (lightOperation.enabled)
                     {
-                        lightOperationIndices.Add(i);
                         lightOperationNames.Add(lightOperation.name);
+                        m_AnyLightOperationEnabled = true;
                     }
+                    else
+                        lightOperationNames.Add(lightOperation.name + " (Disabled)");
                 }
-
-                m_AnyLightOperationEnabled = lightOperationIndices.Count != 0;
             }
             else
             {
@@ -429,9 +470,9 @@ namespace UnityEditor.Experimental.Rendering.LWRP
             Handles.DrawWireArc(transform.position, transform.forward, Quaternion.AngleAxis(180 - angle / 2, transform.forward) * -transform.up, angle, radius);
         }
 
-        Handles.CapFunction GetCapFunc(Texture texture)
+        Handles.CapFunction GetCapFunc(Texture texture, bool isAngleHandle)
         {
-            return (controlID, position, rotation, size, eventType) => Light2DEditorUtility.GUITextureCap(controlID, texture, position, rotation, size, eventType);
+            return (controlID, position, rotation, size, eventType) => Light2DEditorUtility.GUITextureCap(controlID, texture, position, rotation, size, eventType, isAngleHandle);
         }
 
         private void DrawAngleHandles(Light2D light)
@@ -440,14 +481,14 @@ namespace UnityEditor.Experimental.Rendering.LWRP
             Handles.color = Color.yellow;
 
             float outerAngle = light.pointLightOuterAngle;
-            float diff = DrawAngleHandle(light.transform, light.pointLightOuterRadius, k_AngleCapOffset, GetCapFunc(Styles.lightCapTopRight), GetCapFunc(Styles.lightCapBottomRight), ref outerAngle);
+            float diff = DrawAngleHandle(light.transform, light.pointLightOuterRadius, k_AngleCapOffset, GetCapFunc(Styles.lightCapTopRight, true), GetCapFunc(Styles.lightCapBottomRight, true), ref outerAngle);
             light.pointLightOuterAngle = outerAngle;
 
             if (diff != 0.0f)
                 light.pointLightInnerAngle = Mathf.Max(0.0f, light.pointLightInnerAngle + diff);
 
             float innerAngle = light.pointLightInnerAngle;
-            diff = DrawAngleHandle(light.transform, light.pointLightOuterRadius, -k_AngleCapOffset, GetCapFunc(Styles.lightCapTopLeft), GetCapFunc(Styles.lightCapBottomLeft), ref innerAngle);
+            diff = DrawAngleHandle(light.transform, light.pointLightOuterRadius, -k_AngleCapOffset, GetCapFunc(Styles.lightCapTopLeft, true), GetCapFunc(Styles.lightCapBottomLeft, true), ref innerAngle);
             light.pointLightInnerAngle = innerAngle;
 
             if (diff != 0.0f)
@@ -460,7 +501,6 @@ namespace UnityEditor.Experimental.Rendering.LWRP
 
         private void DrawRangeHandles(Light2D light)
         {
-            var handleColor = Handles.color;
             var dummy = 0.0f;
             bool radiusChanged = false;
             Vector3 handlePos = Vector3.zero;
@@ -473,7 +513,7 @@ namespace UnityEditor.Experimental.Rendering.LWRP
 
             float outerRadius = light.pointLightOuterRadius;
             EditorGUI.BeginChangeCheck();
-            Vector3 returnPos = DrawAngleSlider2D(light.transform, rotLeft, outerRadius, -handleOffset, GetCapFunc(Styles.lightCapUp), handleSize, false, false, false, ref dummy);
+            Vector3 returnPos = DrawAngleSlider2D(light.transform, rotLeft, outerRadius, -handleOffset, GetCapFunc(Styles.lightCapUp, false), handleSize, false, false, false, ref dummy);
             if (EditorGUI.EndChangeCheck())
             {
                 var vec = (returnPos - light.transform.position).normalized;
@@ -487,7 +527,7 @@ namespace UnityEditor.Experimental.Rendering.LWRP
             Handles.color = Color.gray;
             float innerRadius = light.pointLightInnerRadius;
             EditorGUI.BeginChangeCheck();
-            returnPos = DrawAngleSlider2D(light.transform, rotLeft, innerRadius, handleOffset, GetCapFunc(Styles.lightCapDown), handleSize, true, false, false, ref dummy);
+            returnPos = DrawAngleSlider2D(light.transform, rotLeft, innerRadius, handleOffset, GetCapFunc(Styles.lightCapDown, false), handleSize, true, false, false, ref dummy);
             if (EditorGUI.EndChangeCheck())
             {
                 innerRadius = (returnPos - light.transform.position).magnitude;
@@ -502,9 +542,7 @@ namespace UnityEditor.Experimental.Rendering.LWRP
             {
                 light.pointLightInnerRadius = (outerRadius < innerRadius) ? outerRadius : innerRadius;
                 light.pointLightOuterRadius = (innerRadius > outerRadius) ? innerRadius : outerRadius;
-            }
-            
-            Handles.color = handleColor;
+            }      
         }
 
         void OnSceneGUI()
@@ -518,8 +556,8 @@ namespace UnityEditor.Experimental.Rendering.LWRP
             {
                 case Light2D.LightType.Point:
                     {
-                        Undo.RecordObject(light, "Edit Target Light");
-                        Undo.RecordObject(light.transform, light.transform.GetHashCode() + "_undo");
+                        Undo.RecordObject(light.transform, "Edit Point Light Transform");
+                        Undo.RecordObject(light, "Edit Point Light");
 
                         DrawRangeHandles(light);
                         DrawAngleHandles(light);
@@ -618,9 +656,8 @@ namespace UnityEditor.Experimental.Rendering.LWRP
 
             serializedObject.Update();
 
-
-
             EditorGUILayout.PropertyField(m_LightType, Styles.generalLightType);
+            m_LastLightType = m_LightType.intValue;
 
             switch (m_LightType.intValue)
             {
@@ -642,16 +679,20 @@ namespace UnityEditor.Experimental.Rendering.LWRP
             EditorGUILayout.PropertyField(m_LightOrder, Styles.shapeLightOrder);
 
             EditorGUI.BeginChangeCheck();
-            EditorGUILayout.IntPopup(m_LightOperation, m_LightOperationNames, m_LightOperationIndices, Styles.generalLightOperation);
-            EditorGUILayout.PropertyField(m_LightColor, Styles.generalLightColor);
-            EditorGUILayout.PropertyField(m_LightIntensity, Styles.generalLightIntensity);
 
-            bool updateGlobalLights = false;
+            EditorGUILayout.IntPopup(m_LightOperationIndex, m_LightOperationNames, m_LightOperationIndices, Styles.generalLightOperation);
+            EditorGUILayout.PropertyField(m_LightColor, Styles.generalLightColor);
+
+            EditorGUI.BeginChangeCheck();
+            EditorGUILayout.PropertyField(m_LightIntensity, Styles.generalLightIntensity);
+            if (EditorGUI.EndChangeCheck())
+                m_LightIntensity.floatValue = Mathf.Max(m_LightIntensity.floatValue, 0);
+
+            bool updateGlobalLights = EditorGUI.EndChangeCheck();
+
             if (m_LightType.intValue != (int)Light2D.LightType.Global)
             {
                 EditorGUILayout.PropertyField(m_UseNormalMap, Styles.generalUseNormalMap);
-                m_LightIntensity.floatValue = Mathf.Max(m_LightIntensity.floatValue, 0);
-                updateGlobalLights |= EditorGUI.EndChangeCheck();
 
                 if (m_UseNormalMap.boolValue)
                 {
@@ -670,7 +711,7 @@ namespace UnityEditor.Experimental.Rendering.LWRP
             if (m_LightType.intValue == (int)Light2D.LightType.Freeform)
             {
                 DoEditButton<FreeformShapeTool>(PathEditorToolContents.icon, "Edit Shape");
-                DoShapeEditorInspector<FreeformShapeTool>();
+                DoPathInspector<FreeformShapeTool>();
                 DoSnappingInspector<FreeformShapeTool>();
             }
 
