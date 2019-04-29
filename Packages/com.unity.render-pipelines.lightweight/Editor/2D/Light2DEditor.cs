@@ -55,6 +55,12 @@ namespace UnityEditor.Experimental.Rendering.LWRP
             public static Texture lightCapBottomRight = Resources.Load<Texture>("LightCapBottomRight");
             public static Texture lightCapUp = Resources.Load<Texture>("LightCapUp");
             public static Texture lightCapDown = Resources.Load<Texture>("LightCapDown");
+            public static Texture parametricLightIcon = Resources.Load("InspectorIcons/ParametricLight") as Texture;
+            public static Texture freeformLightIcon = Resources.Load("InspectorIcons/FreeformLight") as Texture;
+            public static Texture spriteLightIcon = Resources.Load("InspectorIcons/SpriteLight") as Texture;
+            public static Texture pointLightIcon = Resources.Load("InspectorIcons/PointLight") as Texture;
+            public static Texture globalLightIcon = Resources.Load("InspectorIcons/GlobalLight") as Texture;
+            public static Texture[] lightIcons = new Texture[] { parametricLightIcon, freeformLightIcon, spriteLightIcon, pointLightIcon, globalLightIcon };
 
             public static GUIContent generalLightType = EditorGUIUtility.TrTextContent("Light Type", "Specify the light type");
             public static GUIContent generalFalloffSize = EditorGUIUtility.TrTextContent("Falloff", "Specify the falloff of the light");
@@ -64,6 +70,8 @@ namespace UnityEditor.Experimental.Rendering.LWRP
             public static GUIContent generalUseNormalMap = EditorGUIUtility.TrTextContent("Use Normal Map", "Specify whether the light considers normal maps");
             public static GUIContent generalVolumeOpacity = EditorGUIUtility.TrTextContent("Volume Opacity", "Specify the light's volumetric light volume opacity");
             public static GUIContent generalLightOperation = EditorGUIUtility.TrTextContent("Light Operation", "Specify the light operation");
+            public static GUIContent generalLightOverlapMode = EditorGUIUtility.TrTextContent("Alpha Blend on Overlap", "Use alpha blending instead of additive blending when this light overlaps others");
+            public static GUIContent generalLightOrder = EditorGUIUtility.TrTextContent("Light Order", "The relative order in which lights of the same light operation get rendered.");
 
             public static GUIContent pointLightQuality = EditorGUIUtility.TrTextContent("Quality", "Use accurate if there are noticeable visual issues");
             public static GUIContent pointLightInnerAngle =  EditorGUIUtility.TrTextContent("Inner Angle", "Specify the inner angle of the light");
@@ -79,8 +87,6 @@ namespace UnityEditor.Experimental.Rendering.LWRP
             public static GUIContent shapeLightParametricSides = EditorGUIUtility.TrTextContent("Sides", "Adjust the shapes number of sides");
             public static GUIContent shapeLightFalloffOffset = EditorGUIUtility.TrTextContent("Falloff Offset", "Specify the shape's falloff offset");
             public static GUIContent shapeLightAngleOffset = EditorGUIUtility.TrTextContent("Angle Offset", "Adjust the rotation of the object");
-            public static GUIContent shapeLightOverlapMode = EditorGUIUtility.TrTextContent("Light Overlap Mode", "Specify what should happen when this light overlaps other lights");
-            public static GUIContent shapeLightOrder = EditorGUIUtility.TrTextContent("Light Order", "The relative order in which lights of the same light operation get rendered.");
 
             public static GUIContent sortingLayerPrefixLabel = EditorGUIUtility.TrTextContent("Target Sorting Layers", "Apply this light to the specified sorting layers.");
             public static GUIContent sortingLayerAll = EditorGUIUtility.TrTextContent("All");
@@ -108,7 +114,7 @@ namespace UnityEditor.Experimental.Rendering.LWRP
         SerializedProperty m_FalloffIntensity;
         SerializedProperty m_PointZDistance;
         SerializedProperty m_LightOrder;
-        SerializedProperty m_LightOverlapMode;
+        SerializedProperty m_AlphaBlendOnOverlap;
 
         // Point Light Properties
         SerializedProperty m_PointInnerAngle;
@@ -136,7 +142,6 @@ namespace UnityEditor.Experimental.Rendering.LWRP
 
         Light2D lightObject => target as Light2D;
 
-        static Texture[] m_Icons;
         int m_LastLightType = 0;
 
         HeaderModifier m_HeaderModifier;
@@ -144,7 +149,7 @@ namespace UnityEditor.Experimental.Rendering.LWRP
         {
             m_HeaderModifier = new HeaderModifier(OnInspectorGUI, () =>
             {
-                if (m_Icons != null)
+                if (Styles.lightIcons != null)
                 {
                     Color skinColor = EditorGUIUtility.isProSkin ? new Color32(56, 56, 56, 255) : new Color32(194, 194, 194, 255);
 
@@ -153,9 +158,9 @@ namespace UnityEditor.Experimental.Rendering.LWRP
                     Rect iconRect = new Rect(16, 2, 16, 16);
                     EditorGUI.DrawRect(iconRect, skinColor);
 
-                    if (m_Icons[m_LastLightType])
+                    if (Styles.lightIcons[m_LastLightType])
                     {
-                        GUI.DrawTexture(iconRect, m_Icons[m_LastLightType]);
+                        GUI.DrawTexture(iconRect, Styles.lightIcons[m_LastLightType]);
                     }
                 }
             });
@@ -164,18 +169,6 @@ namespace UnityEditor.Experimental.Rendering.LWRP
 
         void OnEnable()
         {
-            if (m_Icons == null)
-            {
-                m_Icons = new Texture[5];
-                m_Icons[0] = Resources.Load("Lights/Parametric Light") as Texture;
-                m_Icons[1] = Resources.Load("Lights/Freeform Light") as Texture;
-                m_Icons[2] = Resources.Load("Lights/Sprite Light") as Texture;
-                m_Icons[3] = Resources.Load("Lights/Point Light") as Texture;
-                m_Icons[4] = Resources.Load("Lights/Global Light") as Texture;
-            }
-
-
-
             m_LightType = serializedObject.FindProperty("m_LightType");
             m_LightColor = serializedObject.FindProperty("m_Color");
             m_LightIntensity = serializedObject.FindProperty("m_Intensity");
@@ -186,7 +179,7 @@ namespace UnityEditor.Experimental.Rendering.LWRP
             m_FalloffIntensity = serializedObject.FindProperty("m_FalloffIntensity");
             m_PointZDistance = serializedObject.FindProperty("m_PointLightDistance");
             m_LightOrder = serializedObject.FindProperty("m_LightOrder");
-            m_LightOverlapMode = serializedObject.FindProperty("m_LightOverlapMode");
+            m_AlphaBlendOnOverlap = serializedObject.FindProperty("m_AlphaBlendOnOverlap");
 
             // Point Light
             m_PointInnerAngle = serializedObject.FindProperty("m_PointLightInnerAngle");
@@ -305,7 +298,12 @@ namespace UnityEditor.Experimental.Rendering.LWRP
                 EditorGUILayout.Slider(m_FalloffIntensity, 0, 1, Styles.generalFalloffIntensity);
 
                 if (lightType == Light2D.LightType.Parametric || lightType == Light2D.LightType.Freeform)
+                {
+                    bool oldWideMode = EditorGUIUtility.wideMode;
+                    EditorGUIUtility.wideMode = true;
                     EditorGUILayout.PropertyField(m_ShapeLightFalloffOffset, Styles.shapeLightFalloffOffset);
+                    EditorGUIUtility.wideMode = oldWideMode;
+                }
             }
         }
 
@@ -627,9 +625,13 @@ namespace UnityEditor.Experimental.Rendering.LWRP
                         Handles.color = Color.white;
 
                         for (int i = 0; i < falloffShape.Count - 1; ++i)
+                        {
                             Handles.DrawLine(t.TransformPoint(falloffShape[i]), t.TransformPoint(falloffShape[i + 1]));
+                            Handles.DrawLine(t.TransformPoint(light.shapePath[i]), t.TransformPoint(light.shapePath[i + 1]));
+                        }
 
                         Handles.DrawLine(t.TransformPoint(falloffShape[falloffShape.Count - 1]), t.TransformPoint(falloffShape[0]));
+                        Handles.DrawLine(t.TransformPoint(light.shapePath[falloffShape.Count - 1]), t.TransformPoint(light.shapePath[0]));
                     }
                     break;
             }
@@ -675,8 +677,8 @@ namespace UnityEditor.Experimental.Rendering.LWRP
                     break;
             }
 
-            EditorGUILayout.PropertyField(m_LightOverlapMode, Styles.shapeLightOverlapMode);
-            EditorGUILayout.PropertyField(m_LightOrder, Styles.shapeLightOrder);
+            EditorGUILayout.PropertyField(m_AlphaBlendOnOverlap, Styles.generalLightOverlapMode);
+            EditorGUILayout.PropertyField(m_LightOrder, Styles.generalLightOrder);
 
             EditorGUI.BeginChangeCheck();
 

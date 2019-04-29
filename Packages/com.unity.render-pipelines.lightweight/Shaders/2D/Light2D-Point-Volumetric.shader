@@ -23,7 +23,6 @@ Shader "Hidden/Light2d-Point-Volumetric"
             {
                 float3 positionOS   : POSITION;
                 float2 texcoord     : TEXCOORD0;
-                float4 volumeColor  : TANGENT;
             };
 
             struct Varyings
@@ -33,7 +32,6 @@ Shader "Hidden/Light2d-Point-Volumetric"
                 float2	screenUV        : TEXCOORD1;
                 float2	lookupUV        : TEXCOORD2;  // This is used for light relative direction
                 float2	lookupNoRotUV   : TEXCOORD3;  // This is used for screen relative direction of a light
-                float4  volumeColor     : TANGENT;
 
 #if LIGHT_QUALITY_FAST
                 float4	lightDirection	: TEXCOORD4;
@@ -53,11 +51,13 @@ Shader "Hidden/Light2d-Point-Volumetric"
 
             TEXTURE2D(_LightLookup);
             SAMPLER(sampler_LightLookup);
+            float4 _LightLookup_TexelSize;
 
             TEXTURE2D(_NormalMap);
             SAMPLER(sampler_NormalMap);
 
             half4	_LightColor;
+            float   _VolumeOpacity;
             float4	_LightPosition;
             half4x4	_LightInvMatrix;
             half4x4	_LightNoRotInvMatrix;
@@ -79,8 +79,9 @@ Shader "Hidden/Light2d-Point-Volumetric"
 
                 float4 lightSpacePos = mul(_LightInvMatrix, worldSpacePos);
                 float4 lightSpaceNoRotPos = mul(_LightNoRotInvMatrix, worldSpacePos);
-                output.lookupUV = 0.5 * (lightSpacePos.xy + 1);
-                output.lookupNoRotUV = 0.5 * (lightSpaceNoRotPos.xy + 1);
+                float halfTexelOffset = 0.5 * _LightLookup_TexelSize.x;
+                output.lookupUV = 0.5 * (lightSpacePos.xy + 1) + halfTexelOffset;
+                output.lookupNoRotUV = 0.5 * (lightSpaceNoRotPos.xy + 1) + halfTexelOffset;
 
 #if LIGHT_QUALITY_FAST
                 output.lightDirection.xy = _LightPosition.xy - worldSpacePos.xy;
@@ -93,7 +94,6 @@ Shader "Hidden/Light2d-Point-Volumetric"
 
                 float4 clipVertex = output.positionCS / output.positionCS.w;
                 output.screenUV = ComputeScreenPos(clipVertex).xy;
-                output.volumeColor = input.volumeColor;
 
                 return output;
             }
@@ -123,7 +123,7 @@ Shader "Hidden/Light2d-Point-Volumetric"
                 half4 lightColor = _LightColor * attenuation;
 #endif
 
-                return input.volumeColor.a * lightColor * _InverseHDREmulationScale;
+                return _VolumeOpacity * lightColor * _InverseHDREmulationScale;
             }
             ENDHLSL
         }

@@ -308,7 +308,7 @@ namespace UnityEngine.Experimental.Rendering.LWRP
                 if (s_RenderTargetsDirty[i])
                 {
                     cmdBuffer.SetRenderTarget(s_RenderTargets[i].Identifier());
-                    cmdBuffer.ClearRenderTarget(false, true, s_LightOperations[i].globalColor);
+                    cmdBuffer.ClearRenderTarget(false, true, Color.black);
                     s_RenderTargetsDirty[i] = false;
                 }
             }
@@ -341,7 +341,7 @@ namespace UnityEngine.Experimental.Rendering.LWRP
                 bool rtDirty = false;
                 Color clearColor;
                 if (!Light2D.globalClearColors[i].TryGetValue(layerToRender, out clearColor))
-                    clearColor = s_LightOperations[i].globalColor;
+                    clearColor = Color.black;
                 else
                     rtDirty = true;
 
@@ -398,7 +398,7 @@ namespace UnityEngine.Experimental.Rendering.LWRP
             bitIndex++;
             uint shapeBit = light.IsShapeLight() ? 1u << bitIndex : 0u;
             bitIndex++;
-            uint additiveBit = (light.lightOverlapMode == Light2D.LightOverlapMode.Additive) ? 1u << bitIndex : 0u;
+            uint additiveBit = light.alphaBlendOnOverlap ? 0u : 1u << bitIndex;
             bitIndex++;
             uint spriteBit = light.lightType == Light2D.LightType.Sprite ? 1u << bitIndex : 0u;
             bitIndex++;
@@ -422,7 +422,7 @@ namespace UnityEngine.Experimental.Rendering.LWRP
             {
                 material = CoreUtils.CreateEngineMaterial(isShape ? s_RendererData.shapeLightShader : s_RendererData.pointLightShader);
 
-                if (light.lightOverlapMode == Light2D.LightOverlapMode.Additive)
+                if (!light.alphaBlendOnOverlap)
                 {
                     SetBlendModes(material, BlendMode.One, BlendMode.One);
                     material.EnableKeyword(k_UseAdditiveBlendingKeyword);

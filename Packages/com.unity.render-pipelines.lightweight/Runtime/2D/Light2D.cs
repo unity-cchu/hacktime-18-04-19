@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 
+#if UNITY_EDITOR
+using UnityEditor.Experimental.SceneManagement;
+#endif
+
 namespace UnityEngine.Experimental.Rendering.LWRP
 {
     // TODO: 
@@ -21,15 +25,6 @@ namespace UnityEngine.Experimental.Rendering.LWRP
             Global = 4
         }
 
-        /// <summary>
-        ///  Light overlap modes. For typical lighting use additive. To override a lights color with the color of another light use AlphaBlend.
-        /// </summary>
-        public enum LightOverlapMode
-        {
-            Additive,
-            AlphaBlend
-        }
-
         //------------------------------------------------------------------------------------------
         //                                      Static/Constants
         //------------------------------------------------------------------------------------------
@@ -40,13 +35,21 @@ namespace UnityEngine.Experimental.Rendering.LWRP
         static BoundingSphere[] s_BoundingSpheres;
         static Dictionary<int, Color>[] s_GlobalClearColors = SetupGlobalClearColors();
 
-        internal static Dictionary<int, Color>[] globalClearColors { get { return s_GlobalClearColors; } }
+        internal static Dictionary<int, Color>[] globalClearColors
+        {
+            get
+            {
+#if UNITY_EDITOR
+                if (PrefabStageUtility.GetCurrentPrefabStage() != null)
+                    return s_GlobalClearColorsForPrefab;
+#endif
+                return s_GlobalClearColors;
+            }
+        }
 
         //------------------------------------------------------------------------------------------
         //                                Variables/Properties
         //------------------------------------------------------------------------------------------
-
-        
         [UnityEngine.Animations.NotKeyable]
         [SerializeField]
         LightType m_LightType = LightType.Parametric;
@@ -72,7 +75,7 @@ namespace UnityEngine.Experimental.Rendering.LWRP
         [SerializeField] bool m_UseNormalMap = false;
 
         [SerializeField] int m_LightOrder = 0;
-        [SerializeField] LightOverlapMode m_LightOverlapMode = LightOverlapMode.Additive;
+        [SerializeField] bool m_AlphaBlendOnOverlap = false; 
 
         int m_PreviousLightOrder = -1;
         int m_PreviousLightOperationIndex;
@@ -111,7 +114,9 @@ namespace UnityEngine.Experimental.Rendering.LWRP
             get { return m_Color; }
             set
             {
-                AddGlobalLight(this, true);
+                if (m_LightType == LightType.Global)
+                    AddGlobalLight(this, true);
+
                 m_Color = value;
             }
         }
@@ -124,7 +129,9 @@ namespace UnityEngine.Experimental.Rendering.LWRP
             get { return m_Intensity; }
             set
             {
-                AddGlobalLight(this, true);
+                if (m_LightType == LightType.Global)
+                    AddGlobalLight(this, true);
+
                 m_Intensity = value;
             }
         }
@@ -136,8 +143,20 @@ namespace UnityEngine.Experimental.Rendering.LWRP
         public Sprite lightCookieSprite => m_LightCookieSprite;
         public float falloffIntensity => m_FalloffIntensity;
         public bool useNormalMap => m_UseNormalMap;
-        public LightOverlapMode lightOverlapMode => m_LightOverlapMode;
+        public bool alphaBlendOnOverlap => m_AlphaBlendOnOverlap;
         public int lightOrder => m_LightOrder;
+
+#if UNITY_EDITOR
+        public static string s_IconsPath = "Packages/com.unity.render-pipelines.lightweight/Editor/2D/Resources/SceneViewIcons/";
+        public static string s_ParametricLightIconPath = s_IconsPath + "ParametricLight.png";
+        public static string s_FreeformLightIconPath = s_IconsPath + "FreeformLight.png";
+        public static string s_SpriteLightIconPath = s_IconsPath + "SpriteLight.png";
+        public static string s_PointLightIconPath = s_IconsPath + "PointLight.png";
+        public static string s_GlobalLightIconPath = s_IconsPath + "GlobalLight.png";
+        public static string[] s_LightIconPaths = new string[] { s_ParametricLightIconPath, s_FreeformLightIconPath, s_SpriteLightIconPath, s_PointLightIconPath, s_GlobalLightIconPath };
+
+        static Dictionary<int, Color>[] s_GlobalClearColorsForPrefab = SetupGlobalClearColors();
+#endif
 
 
         //==========================================================================================
@@ -313,35 +332,44 @@ namespace UnityEngine.Experimental.Rendering.LWRP
 
         static internal void AddGlobalLight(Light2D light2D, bool overwriteColor = false)
         {
+#if UNITY_EDITOR
+            if (PrefabStageUtility.GetPrefabStage(light2D.gameObject) != PrefabStageUtility.GetCurrentPrefabStage())
+                return;
+#endif
+
             for (int i = 0; i < light2D.m_ApplyToSortingLayers.Length; i++)
             {
                 int sortingLayer = light2D.m_ApplyToSortingLayers[i];
-                Dictionary<int, Color> globalColorOp = s_GlobalClearColors[light2D.m_LightOperationIndex];
+                Dictionary<int, Color> globalColorOp = globalClearColors[light2D.m_LightOperationIndex];
                 if (!globalColorOp.ContainsKey(sortingLayer))
                 {
                     globalColorOp.Add(sortingLayer, light2D.m_Intensity * light2D.m_Color);
                 }
                 else
                 {
-                    globalColorOp[sortingLayer] = light2D.m_Intensity * light2D.m_Color;
-                    if(!overwriteColor)
-                        Debug.LogError("More than one global light on layer " + SortingLayer.IDToName(sortingLayer) + " for light operation index " + light2D.m_LightOperationIndex);
+                    if (overwriteColor)
+                        globalColorOp[sortingLayer] = light2D.m_Intensity * light2D.m_Color;
+                    else
+                        Debug.LogWarning("More than one global light on layer " + SortingLayer.IDToName(sortingLayer) + " for light operation index " + light2D.m_LightOperationIndex);
                 }
             }
         }
 
-
         static internal void RemoveGlobalLight(int lightOperationIndex, Light2D light2D)
         {
+#if UNITY_EDITOR
+            if (PrefabStageUtility.GetPrefabStage(light2D.gameObject) != PrefabStageUtility.GetCurrentPrefabStage())
+                return;
+#endif
+
             for (int i = 0; i < light2D.m_ApplyToSortingLayers.Length; i++)
             {
                 int sortingLayer = light2D.m_ApplyToSortingLayers[i];
-                Dictionary<int, Color> globalColorOp = s_GlobalClearColors[lightOperationIndex];
+                Dictionary<int, Color> globalColorOp = globalClearColors[lightOperationIndex];
                 if (globalColorOp.ContainsKey(sortingLayer))
                     globalColorOp.Remove(sortingLayer);
             }
         }
-
 
         private void Awake()
         {
@@ -478,9 +506,13 @@ namespace UnityEngine.Experimental.Rendering.LWRP
                 Light2D.AddGlobalLight(this, true);
         }
 
+
+#if UNITY_EDITOR
         private void OnDrawGizmos()
         {
-            Gizmos.DrawIcon(transform.position, "PointLight Gizmo", true);
+            Gizmos.color = Color.blue;
+            Gizmos.DrawIcon(transform.position, s_LightIconPaths[(int)m_LightType], true);
         }
+#endif
     }
 }
